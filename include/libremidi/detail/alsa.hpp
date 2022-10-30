@@ -1,10 +1,10 @@
 #pragma once
 #include <alsa/asoundlib.h>
 #include <atomic>
-#include <map>
-#include <pthread.h>
 #include <libremidi/detail/midi_api.hpp>
 #include <libremidi/libremidi.hpp>
+#include <map>
+#include <pthread.h>
 #include <sstream>
 #include <sys/time.h>
 #include <thread>
@@ -108,6 +108,25 @@ public:
     if (err < 0)
     {
       throw driver_error("observer_alsa: snd_seq_set_client_name failed");
+    }
+
+    // Add all connected ports to known clients
+    snd_seq_port_info_t* pinfo;
+    snd_seq_port_info_alloca(&pinfo);
+
+    const auto nPorts
+        = portInfo(seq_, pinfo, SND_SEQ_PORT_CAP_WRITE | SND_SEQ_PORT_CAP_SUBS_WRITE, -1);
+
+    for (unsigned int i = 0; i < nPorts; i++)
+    {
+      portInfo(seq_, pinfo, SND_SEQ_PORT_CAP_READ | SND_SEQ_PORT_CAP_SUBS_READ, i);
+
+      const auto client = snd_seq_port_info_get_client(pinfo);
+      const auto port = snd_seq_port_info_get_port(pinfo);
+      const auto p = get_info(client, port);
+
+      if (client != client_)
+        knownClients_[{client, port}] = p;
     }
 
     err = snd_seq_create_simple_port(
